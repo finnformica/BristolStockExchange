@@ -135,7 +135,7 @@ class Orderbook_half:
                         self.best_price = None
                         self.best_tid = None
 
-                if lob_verbose : print self.lob
+                if lob_verbose : print(self.lob)
 
 
         def book_add(self, order):
@@ -432,9 +432,9 @@ class Trader:
                 self.profitpertime = self.balance/(time - self.birthtime)
 
                 if profit < 0 :
-                        print profit
-                        print trade
-                        print order
+                        print(profit)
+                        print(trade)
+                        print(order)
                         sys.exit()
 
                 if verbose: print('%s profit=%d balance=%d profit/time=%d' % (outstr, profit, self.balance, self.profitpertime))
@@ -1341,7 +1341,7 @@ class Trader_GDX(Trader):
 
                 #populate expected values
                 if self.first_turn:
-                        print "populating"
+                        print("populating")
                         self.first_turn = False
                         for n in range(1, self.remaining_offer_ops):
                                 for m in range(1, self.holdings):
@@ -1352,7 +1352,7 @@ class Trader_GDX(Trader):
                                             if self.job == 'Ask':
                                                     #BUYER
                                                     self.values[m][n] = self.calc_p_ask(m, n)
-                        print "done"
+                        print("done")
 
 
                 deal = bid_hit or ask_lifted
@@ -2194,4 +2194,4 @@ if __name__ == "__main__":
                trdr_1_n += 1
         tdump.close()
 
-        print trialnumber
+        print(trialnumber)
