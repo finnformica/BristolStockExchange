@@ -36,7 +36,7 @@ head(profits_long)
 summary(profits %>% select(-num_trials))
 ```
 
-NB: at a quick glance, SHVR has the highest average (average) profits across all experiments, whereas ZIP has the highest  (average) profits. SNPR does not seem to perform too well which is likely due to a longer experiment time in which it would only trade right at the end.
+NB: at a quick glance, SHVR has the highest average (average) profits across all experiments. SNPR does not seem to perform too well which is likely due to it only trading just before the market closes.
 
 ### Generate a box plot
 
@@ -87,7 +87,7 @@ The QQ-plot verifies the use of a Gaussian model, if the points of the samples l
 apply(profits %>% select(-num_trials), 2, shapiro.test)
 ```
 
-NB: ZIC has the lowest p-value out of the traders, however, none of them are statistically significant.
+NB: there is no statistical significance to say that the samples do not follow a Gaussian distribution.
 
 
 ## Hypothesis Testing
