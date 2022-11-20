@@ -23,6 +23,11 @@ def plot_trades(trial_id):
             y = np.append(y,price)
 
     plt.plot(x, y, 'x', color='black')
+    plt.title("BSE trades")
+    plt.xlabel("Time (s)")
+    plt.ylabel("Price (no units)")
+
+    plt.show()
     
 # Use this to run an experiment n times and plot all trades
 def n_runs_plot_trades(n, trial_id, start_time, end_time, traders_spec, order_sched):
