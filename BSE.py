@@ -665,6 +665,7 @@ class Trader_PRZI(Trader):
         # unpack the params
         if type(params) is dict:
             k = params['k']
+            F = params['F']
             optimizer = params['optimizer']
             s_min = params['strat_min']
             s_max = params['strat_max']
@@ -694,7 +695,7 @@ class Trader_PRZI(Trader):
                          's0_index': self.active_strat,    # s0 starts out as active strat
                          'snew_index': self.k,             # (k+1)th item of strategy list is DE's new strategy
                          'snew_stratval': None,            # assigned later
-                         'F': 0.8                          # differential weight -- usually between 0 and 2
+                         'F': F                          # differential weight -- usually between 0 and 2
         }
 
         start_time = time
@@ -716,6 +717,10 @@ class Trader_PRZI(Trader):
                 elif self.optmzr == 'PRDE':
                     # differential evolution: seed initial strategies across whole space
                     strategy = self.mutate_strat(self.strats[0]['stratval'], 'uniform_bounded_range')
+                elif self.optmzr == 'PRMB':
+                    # multi-armed bandit
+                    # update mutate_strat with proper MAB implementation
+                    strategy = self.mutate_strat(self.strats[0]['stratval'], 'gauss')     # mutant of strats[0]
                 else:
                     sys.exit('bad self.optmzr when initializing PRZI strategies')
             self.strats.append({'stratval': strategy, 'start_t': start_time,
@@ -737,8 +742,8 @@ class Trader_PRZI(Trader):
             self.k = k
             self.strat_eval_time = self.k * self.strat_wait_time
 
-        if verbose:
-            print("%s\n" % self.strat_str())
+        # if verbose:
+        #     print("%s\n" % self.strat_str())
 
 
     def getorder(self, time, countdown, lob):
@@ -870,8 +875,8 @@ class Trader_PRZI(Trader):
 
         verbose = False
 
-        if verbose:
-            print('t=%.1f PRSH getorder: %s, %s' % (time, self.tid, self.strat_str()))
+        # if verbose:
+        #     print('t=%.1f PRSH getorder: %s, %s' % (time, self.tid, self.strat_str()))
 
         if len(self.orders) < 1:
             # no orders: return NULL
@@ -1272,6 +1277,10 @@ class Trader_PRZI(Trader):
             # this is PRZI -- nonadaptive, no optimizer, nothing to change here.
             pass
 
+        elif self.optmzr == 'PRMB':
+            # multi-armed bandit
+            pass
+
         else:
             sys.exit('FAIL: bad value for self.optmzr')
 
@@ -1555,6 +1564,8 @@ def populate_market(traders_spec, traders, shuffle, verbose):
             return Trader_PRZI('PRSH', name, balance, parameters, time0)
         elif robottype == 'PRDE':
             return Trader_PRZI('PRDE', name, balance, parameters, time0)
+        elif robottype == 'PRMB':
+            return Trader_PRZI('PRMB', name, balance, parameters, time0)
         else:
             sys.exit('FATAL: don\'t know robot type %s\n' % robottype)
 
@@ -1573,7 +1584,7 @@ def populate_market(traders_spec, traders, shuffle, verbose):
     def unpack_params(trader_params, mapping):
         # unpack the parameters for PRZI-family of strategies
         parameters = None
-        if ttype == 'PRSH' or ttype == 'PRDE' or ttype == 'PRZI':
+        if ttype == 'PRSH' or ttype == 'PRDE' or ttype == 'PRZI' or ttype == 'PRMB':
             # parameters matter...
             if mapping:
                 parameters = 'landscape-mapper'
@@ -1584,6 +1595,9 @@ def populate_market(traders_spec, traders, shuffle, verbose):
                                   'strat_min': trader_params['s_min'], 'strat_max': trader_params['s_max']}
                 elif ttype == 'PRDE':
                     parameters = {'optimizer': 'PRDE', 'k': trader_params['k'],
+                                  'strat_min': trader_params['s_min'], 'strat_max': trader_params['s_max']}
+                elif ttype == 'PRMB':
+                    parameters = {'optimizer': 'PRMB', 'k': trader_params['k'],
                                   'strat_min': trader_params['s_min'], 'strat_max': trader_params['s_max']}
                 else: # ttype=PRZI
                     parameters = {'optimizer': None, 'k': 1,
@@ -1839,6 +1853,27 @@ def customer_orders(time, last_update, traders, trader_stats, os, pending, verbo
 # one session in the market
 def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, avg_bals, dump_all, verbose):
 
+    # display progress bar for market session completion
+    def update_progress(progress):
+        barLength = 50 # Modify this to change the length of the progress bar
+        status = ""
+        if isinstance(progress, int):
+            progress = float(progress)
+        if not isinstance(progress, float):
+            progress = 0
+            status = "error: progress var must be float\r\n"
+        if progress < 0:
+            progress = 0
+            status = "Halt...\r\n"
+        if progress >= 1:
+            progress = 1
+            status = "Done...\r\n"
+        block = int(round(barLength*progress))
+        
+        text = "\rCompleted: [{0}] {1}%".format( "#"*block + "-"*(barLength-block), round(progress*100), 3)
+        sys.stdout.write(text)
+        sys.stdout.flush()
+
 
     def dump_strats_frame(time, stratfile, trdrs):
         # write one frame of strategy snapshot
@@ -1856,7 +1891,7 @@ def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, avg
             trader = trdrs[t]
 
             # print('PRSH/PRDE recording, t=%s' % trader)
-            if trader.ttype == 'PRSH' or trader.ttype == 'PRDE':
+            if trader.ttype == 'PRSH' or trader.ttype == 'PRDE' or trader.ttype == 'PRMB':
                 line_str += 'id=,%s, %s,' % (trader.tid, trader.ttype)
 
                 # line_str += 'bal=$,%f, n_trades=,%d, n_strats=,2, ' % (trader.balance, trader.n_trades)
@@ -1940,6 +1975,7 @@ def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, avg
     frames_done = set()
 
     while time < endtime:
+        update_progress(time/endtime)
 
         # how much time left, as a percentage?
         time_left = (endtime - time) / duration
