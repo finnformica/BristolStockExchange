@@ -669,16 +669,18 @@ class Trader_PRZI(Trader):
             optimizer = params['optimizer']
             s_min = params['strat_min']
             s_max = params['strat_max']
+            wait_time = params['wait_time']
         else:
             optimizer = None
             s_min = 0.0
             s_max = 0.0
+            F = 0.8
 
         self.optmzr = optimizer     # this determines whether it's PRZI, PRSH, or PRDE
         self.k = k                  # number of sampling points (cf number of arms on a multi-armed-bandit, or pop-size)
         self.theta0 = 100           # threshold-function limit value
         self.m = 4                  # tangent-function multiplier
-        self.strat_wait_time = 7200     # how many secs do we give any one strat before switching?
+        self.strat_wait_time = wait_time     # how many secs do we give any one strat before switching?
         self.strat_range_min = s_min    # lower-bound on randomly-assigned strategy-value
         self.strat_range_max = s_max    # upper-bound on randomly-assigned strategy-value
         self.active_strat = 0       # which of the k strategies are we currently playing? -- start with 0
@@ -1594,8 +1596,13 @@ def populate_market(traders_spec, traders, shuffle, verbose):
                     parameters = {'optimizer': 'PRSH', 'k': trader_params['k'],
                                   'strat_min': trader_params['s_min'], 'strat_max': trader_params['s_max']}
                 elif ttype == 'PRDE':
-                    parameters = {'optimizer': 'PRDE', 'k': trader_params['k'],
-                                  'strat_min': trader_params['s_min'], 'strat_max': trader_params['s_max']}
+                    parameters = {
+                        'optimizer': 'PRDE', 
+                        'k': trader_params['k'], 
+                        'F': trader_params['F'],
+                        'wait_time': trader_params['wait_time'],
+                        'strat_min': trader_params['s_min'], 
+                        'strat_max': trader_params['s_max']}
                 elif ttype == 'PRMB':
                     parameters = {'optimizer': 'PRMB', 'k': trader_params['k'],
                                   'strat_min': trader_params['s_min'], 'strat_max': trader_params['s_max']}
@@ -1851,27 +1858,33 @@ def customer_orders(time, last_update, traders, trader_stats, os, pending, verbo
 
 
 # one session in the market
-def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, avg_bals, dump_all, verbose):
+def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, avg_bals, dump_all, verbose, outer_progress=None):
 
     # display progress bar for market session completion
     def update_progress(progress):
-        barLength = 50 # Modify this to change the length of the progress bar
+        bar_len = 15 # Modify this to change the length of the progress bar
         status = ""
         if isinstance(progress, int):
             progress = float(progress)
         if not isinstance(progress, float):
             progress = 0
-            status = "error: progress var must be float\r\n"
         if progress < 0:
             progress = 0
-            status = "Halt...\r\n"
         if progress >= 1:
             progress = 1
-            status = "Done...\r\n"
-        block = int(round(barLength*progress))
+        block = int(round(bar_len*progress))
+        progress_bar = '#' * block + '-' * (bar_len - block)
+        progress_pc = round(progress*100)
+
+        return f'Completed: [{progress_bar}] {progress_pc}%'
+
+    def display_progress(progress1, progress2=None):
+        if progress2:
+            res = '\r' + update_progress(progress2) + '  ' + update_progress(progress1)
+        else:
+            res = '\r' + update_progress(progress1)
         
-        text = "\rCompleted: [{0}] {1}%".format( "#"*block + "-"*(barLength-block), round(progress*100), 3)
-        sys.stdout.write(text)
+        sys.stdout.write(res)
         sys.stdout.flush()
 
 
@@ -1965,6 +1978,7 @@ def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, avg
     last_update = -1.0
 
     time = starttime
+    prev_time_left = time
 
     pending_cust_orders = []
 
@@ -1975,12 +1989,13 @@ def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, avg
     frames_done = set()
 
     while time < endtime:
-        update_progress(time/endtime)
-
         # how much time left, as a percentage?
         time_left = (endtime - time) / duration
-
-        # if verbose: print('\n\n%s; t=%08.2f (%4.1f/100) ' % (sess_id, time, time_left*100))
+        
+        # update progress bar
+        if abs(time_left - prev_time_left) > 0.01:
+            prev_time_left = time_left
+            display_progress(1 - time_left, outer_progress)
 
         trade = None
 
