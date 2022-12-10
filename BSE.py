@@ -1959,7 +1959,7 @@ def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, avg
 
     strat_dump = open(sess_id + '_strats.csv', 'w')
 
-    lobframes = open(sess_id + '_LOB_frames.csv', 'w')
+    # lobframes = open(sess_id + '_LOB_frames.csv', 'w')
     lobframes = None # this disables writing of the LOB frames (which can generate HUGE files)
 
     # initialise the exchange
@@ -2061,13 +2061,13 @@ def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, avg
 
     dump_all = True
 
-    if dump_all:
+    # if dump_all:
 
-        # dump the tape (transactions only -- not writing cancellations)
-        exchange.tape_dump(sess_id+'_tape.csv', 'w', 'keep')
+    #     # dump the tape (transactions only -- not writing cancellations)
+    #     exchange.tape_dump(sess_id+'_tape.csv', 'w', 'keep')
 
-        # record the blotter for each trader
-        blotter_dump(sess_id, traders)
+    #     # record the blotter for each trader
+    #     blotter_dump(sess_id, traders)
 
 
     # write trade_stats for this session (NB end-of-session summary only)
