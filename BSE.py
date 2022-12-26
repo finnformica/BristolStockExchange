@@ -710,7 +710,7 @@ class Trader_PRZI(Trader):
             # initialise each of the strategies in sequence: for PRSH, one random seed, then k-1 mutants of that seed
             # for PRDE, use draws from uniform distbn over whole range
             # the (k+1)th strategy is needed to hold s_new in differential evolution; it's not used in SHC.
-            if s == 0:
+            if not s:
                 strategy = random.uniform(self.strat_range_min, self.strat_range_max)
             else:
                 if self.optmzr == 'PRSH':
@@ -725,8 +725,14 @@ class Trader_PRZI(Trader):
                     strategy = self.mutate_strat(self.strats[0]['stratval'], 'gauss')     # mutant of strats[0]
                 else:
                     sys.exit('bad self.optmzr when initializing PRZI strategies')
-            self.strats.append({'stratval': strategy, 'start_t': start_time,
-                                'profit': profit, 'pps': profit_per_second, 'lut_bid': lut_bid, 'lut_ask': lut_ask})
+            
+            self.strats.append({
+                'stratval': strategy, 
+                'start_t': start_time,
+                'profit': profit, 
+                'pps': profit_per_second, 
+                'lut_bid': lut_bid, 
+                'lut_ask': lut_ask})
 
         if self.params == 'landscape-mapper':
             # replace seed+mutants set of strats with regularly-spaced strategy values over the whole range
@@ -1858,7 +1864,7 @@ def customer_orders(time, last_update, traders, trader_stats, os, pending, verbo
 
 
 # one session in the market
-def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, avg_bals, dump_all, verbose, outer_progress=None):
+def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, avg_bals, dump_all=True, verbose=False, show_progress=False, outer_progress=None):
 
     # display progress bar for market session completion
     def update_progress(progress):
@@ -1993,7 +1999,7 @@ def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, avg
         time_left = (endtime - time) / duration
         
         # update progress bar
-        if abs(time_left - prev_time_left) > 0.01:
+        if abs(time_left - prev_time_left) > 0.01 and show_progress:
             prev_time_left = time_left
             display_progress(1 - time_left, outer_progress)
 
