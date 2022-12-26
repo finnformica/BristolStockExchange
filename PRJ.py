@@ -1,5 +1,6 @@
 from BSE import Trader_PRZI
 
+import math
 import random
 import sys
 import math
@@ -24,6 +25,7 @@ class Trader_PRJ(Trader_PRZI):
         '''
         Generate a new mutant strategy based on the JADE mutation formula
         '''
+
         # order strats by pps descending
         ordered = sorted(self.strats, key=lambda x: self.strats[x]['pps'], reverse=True)
         quantile = ordered[: int(self.p * self.k)] # select top p-quantile
@@ -40,9 +42,9 @@ class Trader_PRJ(Trader_PRZI):
         s0 = self.strats[self.diffevol['s0_index']]['stratval']
         s1 = stratlist[1] # randomly choose from current population
 
-        intersection = [self.strats[i]['stratval'] for i in stratlist[2:]] + self.archive
-        random.shuffle(intersection)
-        s2 = intersection[0] # randomly choose from current population intersect archive
+        union = [self.strats[i]['stratval'] for i in stratlist[2:]] + self.archive
+        random.shuffle(union)
+        s2 = union[0] # randomly choose from current population union archive
 
         # differential evolution mutation
         new_stratval = s0 + self.F * (s_best - s0) + self.F * (s1 - s2)
@@ -85,7 +87,7 @@ class Trader_PRJ(Trader_PRZI):
         sum_sqr = sum([f ** 2 for f in self.display])
         sum = sum(self.display)
 
-        return sum_sqr / (sum if sum else 0.0001)
+        return sum_sqr / sum
 
     def generate_F(self):
         '''
@@ -99,7 +101,7 @@ class Trader_PRJ(Trader_PRZI):
         self.F = min(val, 1)
         
 
-    def check_strat_convergence(self):
+    def check_population_convergence(self):
         # is the stddev of the strategies in the population equal/close to zero?
         sum = 0.0
         for s in range(self.k):
@@ -154,6 +156,8 @@ class Trader_PRJ(Trader_PRZI):
                 self.selection()
                 self.mutation()
 
+                self.check_population_convergence()
+
                 # set up next iteration: first evaluate s0
                 self.active_strat = self.diffevol['s0_index']
                 self.strats[self.active_strat]['start_t'] = time
@@ -162,8 +166,9 @@ class Trader_PRJ(Trader_PRZI):
 
                 self.diffevol['de_state'] = 'active_s0'
 
-                # reset for next generation
-                self.update_params()
+                if math.floor(time / self.strat_wait_time) > self.k:
+                    # reset for next generation
+                    self.update_params()
 
             else:
                 sys.exit('FAIL: self.diffevol[\'de_state\'] not recognized')
