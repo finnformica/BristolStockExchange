@@ -60,7 +60,10 @@ class Trader_PRJ(Trader_PRZI):
             self.archive.pop(rand_strat)
     
     def lehmer_mean(self):
-        pass
+        sum_sqr = sum([f ** 2 for f in self.display])
+        sum = sum(self.display)
+
+        return sum_sqr / sum
 
     def generate_F(self):
         while True:
