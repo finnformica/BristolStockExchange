@@ -668,7 +668,6 @@ class Trader_PRZI(Trader):
             optimizer = params['optimizer']
             s_min = params['strat_min']
             s_max = params['strat_max']
-            wait_time = params['wait_time']
         else:
             optimizer = None
             s_min = 0.0
@@ -679,7 +678,7 @@ class Trader_PRZI(Trader):
         self.k = k                  # number of sampling points (cf number of arms on a multi-armed-bandit, or pop-size)
         self.theta0 = 100           # threshold-function limit value
         self.m = 4                  # tangent-function multiplier
-        self.strat_wait_time = wait_time     # how many secs do we give any one strat before switching?
+        self.strat_wait_time = 7200     # how many secs do we give any one strat before switching?
         self.strat_range_min = s_min    # lower-bound on randomly-assigned strategy-value
         self.strat_range_max = s_max    # upper-bound on randomly-assigned strategy-value
         self.active_strat = 0       # which of the k strategies are we currently playing? -- start with 0
@@ -1300,15 +1299,15 @@ class Trader_PRJ(Trader_PRZI):
         self.display = []    # successful F strats
         self.F = params['F'] # differential evolution weight
         self.k = params['k'] # number of strategies
-        self.c = params['c'] # 
+        self.c = params['c'] # constant for updating muF
         self.p = params['p'] # top 100p% for best strat
         self.muF = 0.5 # determines cauchy distribution for F
         self.i = 0 # iteration count for parameter updates
 
-        print(f'''
-        PRJ: F: {self.F}; k: {self.k}; c: {self.c}; p: {self.p}; mu_F: {self.muF}
-        strats: {self.strats}
-        ''')
+        # print(f'''
+        # PRJ: F: {self.F}; k: {self.k}; c: {self.c}; p: {self.p}; mu_F: {self.muF}
+        # strats: {[round(s['stratval'], 5) for s in self.strats]}
+        # ''')
         
     def mutation(self):
         '''
@@ -1316,24 +1315,25 @@ class Trader_PRJ(Trader_PRZI):
         '''
 
         # order strats by pps descending
-        ordered = sorted(self.strats, key=lambda x: self.strats[x]['pps'], reverse=True)
-        quantile = ordered[: int(self.p * self.k)] # select top p-quantile
+        ordered = sorted(list(range(self.k)), key=lambda x: self.strats[x]['pps'], reverse=True)
+        quantile = ordered[: round(self.p * self.k)] # select top p-quantile
         random.shuffle(quantile)
-        s_best = quantile[0] # top 100p% chosen at random
+        s_best = self.strats[quantile[0]]['stratval'] # top 100p% chosen at random
 
-        # pick k distinct strategies at random
-        stratlist = list(range(0, self.k))
+        # pick k distinct strategies at random not equal to s_best
+        stratlist = [s for s in ordered if s != quantile[0]]
         random.shuffle(stratlist)
 
         # s0 is next iteration's candidate for possible replacement
         self.diffevol['s0_index'] = stratlist[0]
 
         s0 = self.strats[self.diffevol['s0_index']]['stratval']
-        s1 = stratlist[1] # randomly choose from current population
+        s1 = self.strats[stratlist[1]]['stratval'] # randomly choose from current population
 
+        # randomly choose from current population union archive
         union = [self.strats[i]['stratval'] for i in stratlist[2:]] + self.archive
         random.shuffle(union)
-        s2 = union[0] # randomly choose from current population union archive
+        s2 = union[0] 
 
         # differential evolution mutation
         new_stratval = s0 + self.F * (s_best - s0) + self.F * (s1 - s2)
@@ -1342,12 +1342,12 @@ class Trader_PRJ(Trader_PRZI):
         # record it for future use (s0 will be evaluated first, then s_new)
         self.strats[self.diffevol['snew_index']]['stratval'] = new_stratval
 
-        print(f's_best: {s_best}, s0: {s0}, s1: {s1}, s2: {s2}, s3: {s3}, s_new: {new_stratval}')
-
     def selection(self):
         '''
         Select the most profitable strat between s0 and s_new
         '''
+
+        print('\nSelection round:', self.i)
 
         i_0 = self.diffevol['s0_index']
         i_new = self.diffevol['snew_index']
@@ -1355,33 +1355,41 @@ class Trader_PRJ(Trader_PRZI):
         if self.strats[i_new]['pps'] >= self.strats[i_0]['pps']:
             # archive unsuccessful strat
             self.archive.append(self.strats[i_0]['stratval'])
+            
+            print('Unsuccessful strats:', [round(s, 4) for s in self.archive])
 
             # overwrite s0
             self.strats[i_0]['stratval'] = self.strats[i_new]['stratval']
 
             # store successful F value
             self.display.append(self.F)
-        
-        print('Selection completed')
+
+            print('New successful F:', [round(f, 4) for f in self.display])
 
     def clean_archive(self):
         '''
         Remove strats from archive if length exceeds k
         '''
+
         if len(self.archive) > self.k:
+            print('\nArchive (before):', [round(a, 4) for a in self.archive])
             random.shuffle(self.archive)
             self.archive = self.archive[:self.k]
         
-        print(f'Archive cleaned')
+            print('Archive (after):', [round(a, 4) for a in self.archive])
     
     def lehmer_mean(self):
         '''
         Calculate the Lehmer mean for updating muF
         '''
         sum_sqr = sum([f ** 2 for f in self.display])
-        sum = sum(self.display)
+        sum_ = sum(self.display)
 
-        return sum_sqr / sum
+        lehmer = (sum_sqr / sum_) if sum_ else 0
+
+        print('Lehmer mean:', lehmer)
+
+        return lehmer
 
     def generate_F(self):
         '''
@@ -1393,8 +1401,6 @@ class Trader_PRJ(Trader_PRZI):
                 break
         
         self.F = min(val, 1)
-
-        print(f'Generated F: {self.F}')
         
     def check_population_convergence(self):
         '''
@@ -1422,10 +1428,12 @@ class Trader_PRJ(Trader_PRZI):
         Update archive, successful F vals, and Cauchy mean
         '''
         self.clean_archive() # ensure archive len < k
-        self.display = [] # clear success F values
 
         # update cauchy mean
         self.muF = (1 - self.c) * self.muF + self.c * self.lehmer_mean()
+
+        # clear success F values after calculating new Cauchy mean
+        self.display = []
 
         print(f'Generated mu_F: {self.muF}')
 
@@ -1468,11 +1476,13 @@ class Trader_PRJ(Trader_PRZI):
 
                 self.diffevol['de_state'] = 'active_s0'
 
-                if self.i > self.k:
+                if self.i >= self.k - 1:
                     # reset for next generation
                     self.update_params()
 
                     self.i = 0
+                else:
+                    self.i += 1
 
             else:
                 sys.exit('FAIL: self.diffevol[\'de_state\'] not recognized')
@@ -1758,7 +1768,6 @@ def populate_market(traders_spec, traders, shuffle, verbose):
         elif robottype == 'PRDE':
             return Trader_PRZI('PRDE', name, balance, parameters, time0)
         elif robottype == 'PRJ':
-            print('Trader type: PRJ')
             return Trader_PRJ('PRJ', name, balance, parameters, time0)
         else:
             sys.exit('FATAL: don\'t know robot type %s\n' % robottype)
@@ -2259,13 +2268,13 @@ def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, avg
 
     dump_all = True
 
-    # if dump_all:
+    if dump_all:
 
-    #     # dump the tape (transactions only -- not writing cancellations)
-    #     exchange.tape_dump(sess_id+'_tape.csv', 'w', 'keep')
+        # dump the tape (transactions only -- not writing cancellations)
+        exchange.tape_dump(sess_id+'_tape.csv', 'w', 'keep')
 
-    #     # record the blotter for each trader
-    #     blotter_dump(sess_id, traders)
+        # record the blotter for each trader
+        blotter_dump(sess_id, traders)
 
 
     # write trade_stats for this session (NB end-of-session summary only)
