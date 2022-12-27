@@ -53,12 +53,12 @@ import math
 import random
 import time as chrono
 
-# a bunch of system constants (globals)
-bse_sys_minprice = 1                    # minimum price in the system, in cents/pennies
-bse_sys_maxprice = 500                  # maximum price in the system, in cents/pennies
-# ticksize should be a param of an exchange (so different exchanges have different ticksizes)
-# todo: change this, so ticksize no longer global. 
-ticksize = 1  # minimum change in price, in cents/pennies
+from PRJ import Trader_PRJ
+
+# system constants
+bse_sys_minprice = 1     # minimum price in the system, in cents/pennies
+bse_sys_maxprice = 500   # maximum price in the system, in cents/pennies
+ticksize = 1             # minimum change in price, in cents/pennies
 
 
 # an Order/quote has a trader id, a type (buy/sell) price, quantity, timestamp, and unique i.d.
@@ -719,10 +719,9 @@ class Trader_PRZI(Trader):
                 elif self.optmzr == 'PRDE':
                     # differential evolution: seed initial strategies across whole space
                     strategy = self.mutate_strat(self.strats[0]['stratval'], 'uniform_bounded_range')
-                elif self.optmzr == 'PRMB':
-                    # multi-armed bandit
-                    # update mutate_strat with proper MAB implementation
-                    strategy = self.mutate_strat(self.strats[0]['stratval'], 'gauss')     # mutant of strats[0]
+                elif self.optmzr == 'PRJ':
+                    # differential evoluation with JADE
+                    strategy = self.mutate_strat(self.strats[0]['stratval'], 'uniform_bounded_range')
                 else:
                     sys.exit('bad self.optmzr when initializing PRZI strategies')
             
@@ -1285,10 +1284,6 @@ class Trader_PRZI(Trader):
             # this is PRZI -- nonadaptive, no optimizer, nothing to change here.
             pass
 
-        elif self.optmzr == 'PRMB':
-            # multi-armed bandit
-            pass
-
         else:
             sys.exit('FAIL: bad value for self.optmzr')
 
@@ -1572,8 +1567,9 @@ def populate_market(traders_spec, traders, shuffle, verbose):
             return Trader_PRZI('PRSH', name, balance, parameters, time0)
         elif robottype == 'PRDE':
             return Trader_PRZI('PRDE', name, balance, parameters, time0)
-        elif robottype == 'PRMB':
-            return Trader_PRZI('PRMB', name, balance, parameters, time0)
+        elif robottype == 'PRJ':
+            print('Trader type: PRJ')
+            return Trader_PRJ('PRJ', name, balance, parameters, time0)
         else:
             sys.exit('FATAL: don\'t know robot type %s\n' % robottype)
 
@@ -1592,7 +1588,7 @@ def populate_market(traders_spec, traders, shuffle, verbose):
     def unpack_params(trader_params, mapping):
         # unpack the parameters for PRZI-family of strategies
         parameters = None
-        if ttype == 'PRSH' or ttype == 'PRDE' or ttype == 'PRZI' or ttype == 'PRMB':
+        if ttype == 'PRSH' or ttype == 'PRDE' or ttype == 'PRZI' or ttype == 'PRJ':
             # parameters matter...
             if mapping:
                 parameters = 'landscape-mapper'
@@ -1609,9 +1605,15 @@ def populate_market(traders_spec, traders, shuffle, verbose):
                         'wait_time': trader_params['wait_time'],
                         'strat_min': trader_params['s_min'], 
                         'strat_max': trader_params['s_max']}
-                elif ttype == 'PRMB':
-                    parameters = {'optimizer': 'PRMB', 'k': trader_params['k'],
-                                  'strat_min': trader_params['s_min'], 'strat_max': trader_params['s_max']}
+                elif ttype == 'PRJ':
+                    parameters = {
+                        'optimizer': 'PRJ',
+                        'k': trader_params['k'],
+                        'F': trader_params['F'],
+                        'c': trader_params['c'],
+                        'p': trader_params['p'],
+                        'strat_min': trader_params['s_min'], 
+                        'strat_max': trader_params['s_max']}
                 else: # ttype=PRZI
                     parameters = {'optimizer': None, 'k': 1,
                                   'strat_min': trader_params['s_min'], 'strat_max': trader_params['s_max']}
@@ -1910,7 +1912,7 @@ def market_session(sess_id, starttime, endtime, trader_spec, order_schedule, avg
             trader = trdrs[t]
 
             # print('PRSH/PRDE recording, t=%s' % trader)
-            if trader.ttype == 'PRSH' or trader.ttype == 'PRDE' or trader.ttype == 'PRMB':
+            if trader.ttype == 'PRSH' or trader.ttype == 'PRDE' or trader.ttype == 'PRJ':
                 line_str += 'id=,%s, %s,' % (trader.tid, trader.ttype)
 
                 # line_str += 'bal=$,%f, n_trades=,%d, n_strats=,2, ' % (trader.balance, trader.n_trades)
